@@ -1,7 +1,7 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <stdio.h>
-#include <sys/time.h>
+#include <time.h>
 /**
  * The program reads the file specified by argv[1]
  * and executes the programs listed with the specified delay.
@@ -14,7 +14,9 @@
 
 int main(int argc, char **argv) {
 
-	int t; // time count
+	struct timespec offset;
+
+	clock_gettime(CLOCK_MONOTONIC_RAW, &offset);
 
 	FILE *f = fopen(argv[1], "r");
 
@@ -22,13 +24,20 @@ int main(int argc, char **argv) {
 
 	while(fgets(buf, 256, f) != NULL) {
 
-		int id = 1;
+		int id = fork();
+		if (id == 0) {
 
-		id = fork();
-		if (id > 0) {
+			int i = 0;
 
-			int i = 1;
-			int delay = buf[0] - '0';
+			while(buf[i] == ' ') {
+				i++;
+			}
+
+			if (buf[i] == '\n') {
+				return 0;
+			}
+
+			float delay = buf[i++] - '0';
 
 			while (buf[i] != ' ') {
 				
@@ -51,15 +60,25 @@ int main(int argc, char **argv) {
 			}
 
 			buf[i] = 0;//closed
+			
+			struct timespec current;
 
+			clock_gettime(CLOCK_MONOTONIC_RAW, &current);
+
+			delay += offset.tv_sec - current.tv_sec +
+				((float) (offset.tv_nsec -
+					current.tv_nsec)) / 1000000000;
+			printf("%f\n", delay);
 			sleep(delay);
 
 			execl(path, path, buf, NULL);
 
 			return 0;
 
-		}
+		} 
 
 	}
+
+	return 0;
 
 }
