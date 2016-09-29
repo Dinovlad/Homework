@@ -1,6 +1,7 @@
 #include <unistd.h>
 #include <stdio.h>
 #include <time.h>
+#include <stdlib.h>
 /**
  * The program reads the file specified by argv[1]
  * and executes the programs listed with the specified delay.
@@ -19,7 +20,7 @@ int main(int argc, char **argv) {
 
 	FILE *f = fopen(argv[1], "r");
 
-	char buf[256];
+	char *buf = (char *) malloc(256);
 
 	while(fgets(buf, 256, f) != NULL) {
 
@@ -36,7 +37,10 @@ int main(int argc, char **argv) {
 				return 0;
 			}
 
-			float delay = buf[i++] - '0';
+			buf = &buf[i];
+			i = 1;
+
+			float delay = buf[0] - '0';
 
 			while (buf[i] != ' ') {
 				
@@ -67,7 +71,7 @@ int main(int argc, char **argv) {
 			delay += offset.tv_sec - current.tv_sec +
 				((float) (offset.tv_nsec -
 					current.tv_nsec)) / 1000000000;
-			printf("%f\n", delay);
+
 			sleep(delay);
 
 			execl(path, path, buf, NULL);
@@ -77,6 +81,8 @@ int main(int argc, char **argv) {
 		} 
 
 	}
+
+	fclose(f);
 
 	return 0;
 
