@@ -69,6 +69,8 @@ void receive() { // return the type of the message received
 
 }
 
+int somevar; // this line breaks the queue message
+
 int main() {
 
 	key_t mKey = ftok("client.c", 0);

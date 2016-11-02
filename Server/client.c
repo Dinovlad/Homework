@@ -1,12 +1,12 @@
 #include <sys/types.h>
 #include <sys/ipc.h>
 #include <sys/msg.h>
-#include <sys/sem.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 
-#define size 40
+#define size 32
 
 void error(char *mes) {
 
@@ -50,9 +50,9 @@ Any other message type is equal to (id + 1) and is sent to the client with this 
 
 struct msgbuf {
 
-	int mtype;
+	long mtype;
 
-	int mtext[5];
+	int mtext[4];
 
 };
 
@@ -66,9 +66,9 @@ int msqid;
 
 Arguments format:
 
-<id> <a> <b>
+<a> <b>
 
-<id> exit
+exit
 
 The client sends numbers a and b to the server and waits
 for a reply in a message of type (id + 1)
@@ -87,7 +87,7 @@ void send() {
 
 void receive() {
 
-	if (msgrcv(msqid, &buffer, size, id + 1, MSG_NOERROR) < 0) {
+	if (msgrcv(msqid, &buffer, size, id + 1, 0) < 0) {
 		error("No message can be received.");
 	}
 
@@ -109,20 +109,25 @@ int main(int argc, char **argv) {
 		error("Message queue cannot be created or accessed.");
 	}
 	
-	id = intValue(argv[1]);		
+	id = getpid();
 
-	if (strcmp(argv[2], "exit") == 0) {
+	if (strcmp(argv[1], "exit") == 0) {
 
 		text[0] = 1; // terminating message
 		text[1] = id;
-		text[4] = getpid();
 
-		send();
+		send(); // server does not receive thus sent messages
 
 		receive();
 
 		if (text[0] == 0) { // success
+
+			if (msgctl(msqid, IPC_RMID, NULL) == -1) {
+				printf("The shared mempry unit cannot be destroyed.\n");
+			}
+
 			printf("The server is terminating.\n");
+
 		} else if (text[0] == -1) {
 			printf("Request denied.\n");
 		} else {
@@ -130,14 +135,11 @@ int main(int argc, char **argv) {
 		}
 
 	} else {
-	
-		text[0] = 0; // casual message
-		text[4] = getpid();
 
-		int i;
-		for (i = 1; i < 4; i++) {
-			text[i] = intValue(argv[i]);
-		}
+		text[0] = 0; // casual message
+		text[1] = id;
+		text[2] = intValue(argv[1]);
+		text[3] = intValue(argv[2]);
 
 		send();
 
