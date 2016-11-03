@@ -1,19 +1,49 @@
 #include <sys/types.h>
 #include <sys/ipc.h>
 #include <sys/msg.h>
-#include <sys/shm.h>
+#include <sys/sem.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
+#include <wait.h>
+#include <errno.h>
 
-#define size 32
+#define size 16
+
+/*
+The server must be run with 1 argument specifying 
+the maximun number of its clients.
+*/
+
 
 void error(char *mes) {
 
 	printf("%s\n", mes);
 
 	exit(-1);
+
+}
+
+int intValue(char *s) {
+
+        int result = 0;
+
+        while((*s) != 0) {
+
+                if (((*s) < '0') || ((*s) > '9')) {
+                        error("Not an integer string.");
+                }
+
+                result *= 10;
+
+                result += (*s) - '0';
+
+                s++;
+
+        }
+
+        return result;
 
 }
 
@@ -64,12 +94,51 @@ void sendFlag(int cid, int flg) {
 void receive() { // return the type of the message received
 
 	if (msgrcv(msqid, &buffer, size, 1, MSG_NOERROR) < 0) {
+
+		printf("%s\n", strerror(errno));
+
 		error("No message can be received.");
 	}
 
 }
 
-int main() {
+struct sembuf sbuf;
+
+int semid;
+
+void inc() {
+
+	sbuf.sem_op = 1;
+
+	if (semop(semid, &sbuf, 1) < 0) {
+		error("Problems with increasing the semaphore.");
+	}
+
+}
+
+int dec() {
+
+	sbuf.sem_op = -1;
+
+	if (semop(semid, &sbuf, 1) < 0) {
+		
+		if (errno == EAGAIN) {
+			return -1;
+		}
+
+		error("Problems with decreasing the semaphore.");
+
+	}
+
+	return 0;
+	
+}
+
+int main(int argc, char **argv) {
+	
+	int limit = intValue(argv[1]);
+
+	printf("The maximum number of clients: %d.\n", limit);
 
 	key_t mKey = ftok("client.c", 0);
 
@@ -79,33 +148,39 @@ int main() {
 
 	msqid = msgget(mKey, 0666 | IPC_CREAT);
 
-
 	if (msqid < 0) {
 		error("Message queue cannot be created or accessed.");
 	}
 
-	int *ids;
+	key_t sKey = ftok("server.c", 0);
 
-	key_t shmKey = ftok("server.c", 0);
-
-	if (shmKey < 0) {
-		error("The shared memory key cannot be generated.");
+	if (sKey < 0) {
+		error("The semaphore key cannot be generated.");
 	}
 
-	int shmid = shmget(shmKey, 8, 0666 | IPC_CREAT);
+	semid = semget(sKey, 1, 0666 | IPC_CREAT);
 
-	if (shmid < 0) {
-		error("Shared memory cannot be created.");
+	if (semid < 0) {
+		error("A semaphore cannot be created.");
 	}
 
-	ids = shmat(shmid, NULL, 0);
+	union semun {
 
-	if (ids < 0) {
-		error("Shared memory cannot be attached.");
+		int val;
+		struct semid_ds *buf;
+		unsigned short  *array;
+		struct seminfo  *_buf;
+	
+	} su;
+
+	su.val = limit;
+
+	if (semctl(semid, 0, SETVAL, su) < 0) {
+		error("Problems with initialising the semaphore.\n");
 	}
 
-	ids[0] = 0;
-	ids[1] = 0;
+	sbuf.sem_num = 0;
+	sbuf.sem_flg = IPC_NOWAIT;
 
 	while(1) {
 
@@ -113,40 +188,30 @@ int main() {
 
 		receive();
 
-		printf("A message received.\n");
-
 		//the first byte of the message determines
 		//wether it is common or terminating
 
 		int cid = text[1]; // client id
 
-		printf("The client id: %d.\n", cid);
+		printf("A message received from the client with id: %d.\n", cid);
 
-		if (ids[0] == 0) {
-
-			ids[0] = cid;
-
-			cid = 0;
-
-		} else if (ids[1] == 0) {
-
-			ids[1] = cid;
-
-			cid = 1;
-
-		} else {
+		if (dec() < 0) {
 
 			sendFlag(cid, -1);
 
 			continue;
 
 		}
-printf("text[0] = %d.\n", text[0]);
+
 		if (text[0] == 1) { // terminating message
 
 			printf("The terminating message received.\n");
 
-			sendFlag(ids[cid], 0); // success
+			if (semctl(semid, 0, IPC_RMID) < 0) {
+				printf("The semaphore cannot be destroyed.\n");
+			}
+
+			sendFlag(cid, 0); // success
 
 			printf("Terminating.\n");
 
@@ -156,9 +221,9 @@ printf("text[0] = %d.\n", text[0]);
 
 		int pid = fork();
 
-		if (pid == 0) {
+		if (pid > 0) {
 			
-			printf("The request of the client %d is being processed.\n", ids[cid]);
+			printf("The request of the client %d is being processed.\n", cid);
 
 			// now process the request
 
@@ -171,11 +236,11 @@ printf("text[0] = %d.\n", text[0]);
 			text[0] = 0; // success
 			text[1] = res;
 
-			send(ids[cid]);
+			send(cid);
 
 			printf("The answer sent.\n");
 
-			ids[cid] = 0;
+			inc();
 
 			return 0;
 

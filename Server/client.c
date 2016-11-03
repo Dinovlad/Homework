@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <unistd.h>
 
-#define size 32
+#define size 16
 
 void error(char *mes) {
 
