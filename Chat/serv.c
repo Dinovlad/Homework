@@ -11,6 +11,7 @@
 #include <sys/ipc.h>
 #include <sys/sem.h>
 #include <time.h>
+#include "communication.h"
 
 #define check() errCheck(__LINE__)
 
@@ -99,75 +100,6 @@ void unblock() { // unblocks the clients array
 }
 
 // semaphore end
-
-// communnication implements
-
-// the procedure does not return until count bytes are read
-void readFull(int fd, void *buf, size_t count) {
-
-	size_t n;
-
-	while(count) {
-
-		n = read(fd, buf, count);
-		check();
-
-		buf = (void *) (buf + n);
-
-		count -= n;
-
-	}
-
-}
-
-// the function reads the next message and
-// returns the number of bytes read and written to buf
-int readMessage(int socketfd, void *buf, int bufsize) {
-
-	int size;
-
-	readFull(socketfd, &size, 4); // read the size of the message
-
-	if (bufsize < size) {
-
-		printf("The capacity of the buffer is not sufficient.\n");
-
-		exit(-1);		
-
-	}
-
-	readFull(socketfd, buf, size);
-
-	return size;
-
-}
-
-void writeFull(int fd, void *buf, size_t count) {
-
-	size_t n;
-
-	while(count) {
-
-		n = write(fd, buf, count);
-		check();
-
-		buf = (void *) (buf + n);
-
-		count -= n;
-
-	}
-
-}
-
-void writeMessage(int socketfd, void *buf, int count) {
-
-	writeFull(socketfd, &count, 4);
-
-	writeFull(socketfd, buf, count);
-
-}
-
-// communication implements end
 
 int main() {
 
