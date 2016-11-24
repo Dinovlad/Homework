@@ -168,12 +168,14 @@ int main() {
 
 	int cfd; // client file descriptor
 
-	while(1) {
+	printf("The server has successfully started.\n");
 
-		printf("The server has successfully started.\n");
+	while(1) {
 
 		cfd = accept(sfd, NULL, NULL);
 		check();
+
+		printf("New client detected.\n");
 
 		int pid = fork();
 
@@ -220,15 +222,24 @@ int main() {
 	struct clientInfo *client = &heap[i];
 
 	client[0].fd = cfd;
-	sprintf(client[0].name, "%s", buf.message); 
+	sprintf(client[0].name, "%s", buf.message); 	
 
 	addClient(client); //add the *structure to the clients list
 
-	unblock();
-
 	// the client registered
 
+	sprintf(buf.name, "SERVER");
+	buf.time = time(NULL);
+	sprintf(buf.message, "Welcome, %s!", client[0].name);
+	writeMessage(client[0].fd, &buf, sizeof(struct buffer));
+
+	printf("Client %s has been initialised.\n", client[0].name);
+
 	// start receiving messages
+
+	sprintf(buf.name, "%s", client[0].name);
+
+	unblock();
 
 	while(1) {
 
@@ -245,7 +256,7 @@ int main() {
 				continue;
 			}
 
-			writeMessage(cls[i][0].fd, &buf, sizeof(struct buffer));
+			writeMessage(cls[i][0].fd, &buf, sizeof(struct buffer) - mesize + l);
 
 		}
 

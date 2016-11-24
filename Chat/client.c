@@ -73,7 +73,7 @@ int main(int argc, char **argv) {
 
 	// the parent receives the messages
 	
-	#define nameLength 50
+	#define nameLength 100
 
 	struct buffer {
 
