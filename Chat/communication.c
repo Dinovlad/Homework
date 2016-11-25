@@ -7,7 +7,7 @@
 // returns 0 on success, -1 on falure
 int readFull(int fd, void *buf, size_t count) {
 
-	size_t n;
+	ssize_t n;
 
 	while(count) {
 
@@ -61,7 +61,7 @@ int readMessage(int socketfd, void *buf, int bufsize) {
 
 int writeFull(int fd, void *buf, size_t count) {
 
-	size_t n;
+	ssize_t n;
 
 	while(count) {
 
