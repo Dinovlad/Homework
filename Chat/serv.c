@@ -128,7 +128,7 @@ int main() {
 	// heap of clients information structures
 	heap = (struct clientInfo *) (clN + 4 + limit * sizeof(size_t));
 	// the unused space must be set to zero
-	memset(heap, 0, limit * sizeof(struct clientInfo)); // segm. fault
+	memset(heap, 0, limit * sizeof(struct clientInfo));
 
 	cls =  (struct clientInfo **) (clN + 4); // array of *clients information
 	clN[0] = 0;
@@ -226,6 +226,8 @@ int main() {
 
 	addClient(client); //add the *structure to the clients list
 
+	unblock();
+
 	// the client registered
 
 	sprintf(buf.name, "SERVER");
@@ -239,8 +241,6 @@ int main() {
 
 	sprintf(buf.name, "%s", client[0].name);
 
-	unblock();
-
 	while(1) {
 
 		l = readMessage(client[0].fd, buf.message, mesize);
@@ -249,7 +249,9 @@ int main() {
 		buf.time = time(NULL);
 
 		block();
-
+		
+		printf("Processing message from %s.\n", client[0].name);
+		
 		for(i = 0; i < clN[0]; i++) {
 	
 			if (cls[i] == client) {
@@ -257,6 +259,8 @@ int main() {
 			}
 
 			writeMessage(cls[i][0].fd, &buf, sizeof(struct buffer) - mesize + l);
+
+		printf("Message sent to %s.\n", cls[i][0].name);
 
 		}
 

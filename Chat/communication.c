@@ -38,7 +38,7 @@ errno is set to -2
 int readMessage(int socketfd, void *buf, int bufsize) {
 
 	int size;
-
+	
 	if (readFull(socketfd, &size, 4) < 0) { // read the size of the message
 		return -1;
 	}
