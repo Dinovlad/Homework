@@ -13,6 +13,8 @@
 #include <time.h>
 #include "communication.h"
 
+#include <pthread.h>
+
 #define check() errCheck(__LINE__)
 
 void errCheck(int line) {
@@ -101,6 +103,102 @@ void unblock() { // unblocks the clients array
 
 // semaphore end
 
+void * processClient(void *arg) {
+
+	#define mesize 1000 // message size
+
+	struct buffer {
+
+		char name[nameLength];
+
+		time_t time;
+
+		char message[mesize];
+
+	} buf;
+
+	int l; // length (of the string read)
+
+	// fisrt, register the client
+	// the first message is treated as the name
+
+	int cfd = (int) arg;
+
+	l = readMessage(cfd, buf.message, mesize);
+	check();
+	if (l > nameLength) {
+		l = nameLength;
+	}
+	buf.message[l - 1] = 0;
+
+	// start initialisation
+
+	block(); 
+
+	int i = 0;
+	while(heap[i].fd != 0) { // search for an empty structure in the heap
+		i++;
+	}
+
+	struct clientInfo *client = &heap[i];
+
+	client[0].fd = cfd;
+	sprintf(client[0].name, "%s", buf.message); 	
+
+	addClient(client); //add the *structure to the clients list
+
+	unblock();
+
+	// the client registered
+
+	sprintf(buf.name, "SERVER");
+	buf.time = time(NULL);
+	sprintf(buf.message, "Welcome, %s!", client[0].name);
+	writeMessage(client[0].fd, &buf, sizeof(struct buffer));
+	check();
+
+	printf("Client %s has been initialised.\n", client[0].name);
+
+	// start receiving messages
+
+	sprintf(buf.name, "%s", client[0].name);
+
+	while(1) {
+
+		l = readMessage(client[0].fd, buf.message, mesize);
+		check();
+		buf.message[l - 1] = 0;
+
+		buf.time = time(NULL);
+
+		block();
+		
+		printf("Processing message from %s.\n", client[0].name);
+		
+		for(i = 0; i < clN[0]; i++) {
+			printf("%s: %d.\n", cls[i][0].name, cls[i][0].fd);
+			if (cls[i] == client) {
+				continue;
+			}
+
+//			writeMessage(cls[i][0].fd, &buf, sizeof(struct buffer) - mesize + l); check();
+int n = sizeof(struct buffer) - mesize + l;
+write(cls[i][0].fd, &n, 4); 
+check(); 
+write(cls[i][0].fd, &buf, n);
+check();
+		printf("Message sent to %s.\n", cls[i][0].name);
+
+		}
+
+		unblock();
+
+	}
+
+	return NULL;
+
+}
+
 int main() {
 
 	// 1. first create a socket
@@ -177,16 +275,20 @@ int main() {
 
 		printf("New client detected.\n");
 
-		int pid = fork();
+		/*int pid = fork();
 
 		if (pid == 0) { // the child must leave the cycle
 			break; 
-		}
+		}*/
 		
+		pthread_t thr;
+
+		pthread_create(&thr, NULL, processClient, (void *) cfd);
+
 		// the parent never leaves the cycle
 
 	}
-
+/*
 	#define mesize 1000 // message size
 
 	struct buffer {
@@ -205,6 +307,7 @@ int main() {
 	// the first message is treated as the name
 
 	l = readMessage(cfd, buf.message, mesize);
+	check();
 	if (l > nameLength) {
 		l = nameLength;
 	}
@@ -234,6 +337,7 @@ int main() {
 	buf.time = time(NULL);
 	sprintf(buf.message, "Welcome, %s!", client[0].name);
 	writeMessage(client[0].fd, &buf, sizeof(struct buffer));
+	check();
 
 	printf("Client %s has been initialised.\n", client[0].name);
 
@@ -244,6 +348,7 @@ int main() {
 	while(1) {
 
 		l = readMessage(client[0].fd, buf.message, mesize);
+		check();
 		buf.message[l - 1] = 0;
 
 		buf.time = time(NULL);
@@ -253,19 +358,23 @@ int main() {
 		printf("Processing message from %s.\n", client[0].name);
 		
 		for(i = 0; i < clN[0]; i++) {
-	
+			printf("%s: %d.\n", cls[i][0].name, cls[i][0].fd);
 			if (cls[i] == client) {
 				continue;
 			}
 
-			writeMessage(cls[i][0].fd, &buf, sizeof(struct buffer) - mesize + l);
-
+//			writeMessage(cls[i][0].fd, &buf, sizeof(struct buffer) - mesize + l); check();
+int n = sizeof(struct buffer) - mesize + l;
+write(cls[i][0].fd, &n, 4); 
+check(); 
+write(cls[i][0].fd, &buf, n);
+check();
 		printf("Message sent to %s.\n", cls[i][0].name);
 
 		}
 
 		unblock();
 
-	}
+	}*/
 
 }
