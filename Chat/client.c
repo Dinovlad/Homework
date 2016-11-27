@@ -51,7 +51,7 @@ int main(int argc, char **argv) {
 	char mes[mesize];
 
 	printf("Enter your name:\n");
-	scanf("%s", mes);
+	scanf("%999s", mes);
 
 	writeMessage(sfd, mes, strlen(mes) + 1); // send the client's name
 	check();
@@ -63,7 +63,7 @@ int main(int argc, char **argv) {
 	if (pid == 0) { // the child sends the messages
 		while(1) {
 
-			scanf("%s", mes);
+			scanf("%999s", mes);
 
 			writeMessage(sfd, mes, strlen(mes) + 1);
 			check();

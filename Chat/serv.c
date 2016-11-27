@@ -6,13 +6,10 @@
 #include <stdlib.h>
 #include <arpa/inet.h>
 #include <string.h>
-#include <sys/mman.h>
-#include <sys/types.h>
-#include <sys/ipc.h>
-#include <sys/sem.h>
 #include <time.h>
 #include "communication.h"
 
+#include <signal.h>
 #include <pthread.h>
 
 #define check() errCheck(__LINE__)
@@ -41,81 +38,108 @@ void dbg(int line) {
 
 struct clientInfo { // client information
 
+	pthread_t thr; // thread (id)
+
 	int fd; // socket file descriptor
 
 	char name[nameLength + 1];
 
 };
 
-struct clientInfo *heap; // heap of empty structures
-struct clientInfo **cls; // clients
-int *clN; // clients number
+struct clientInfo heap[limit * sizeof(struct clientInfo)]; // heap of empty structures
+struct clientInfo *cls[limit * sizeof(struct clientInfo *)]; // clients
+int clN; // clients number
 
 void addClient(struct clientInfo *cl) {
 
-	cls[*clN] = cl;
+	cls[clN] = cl;
 
-	clN[0]++;
+	clN++;
 
 }
 
-void removeClient(struct clientInfo *cl) {
+void removeClient(int i) {
 
-	int i;
-
-	for(i = 0; i < clN[0]; i++) {
-		if(cls[i] == cl) {
-			break;
-		}
-	}
-
-	for(i = i + 1; i < clN[0]; i++) {
+	for(i = i + 1; i < clN; i++) {
 		cls[i - 1] = cls[i];
 	}
 
-	clN[0]--;
+	clN--;
 
 }
 
 // clients list end
 
-// semaphore
+// mutex
 
-int semid;
+pthread_mutex_t mutex;
 
-struct sembuf sbuf[2];
+#define block() pthread_mutex_lock(&mutex)
+#define unblock() pthread_mutex_unlock(&mutex)
 
-// blocks the clients array or suspends the execution
-// of the calling process if it is already blocked
-void block() { 
+// mutex end
 
-	semop(semid, &sbuf[1], 1); 
-	check();
+#define mesize 1000 // message size
+
+struct buffer {
+
+	char name[nameLength];
+
+	time_t time;
+
+	char message[mesize];
+
+} glbuf; // global buffer
+
+void broadcast(void *buf, size_t count, struct clientInfo *source) {
+
+	int i;
+
+	for(i = 0; i < clN; i++) {
+
+		if (cls[i] == source) {
+			continue;
+		}
+
+		if (writeMessage(cls[i][0].fd, buf, count) < 0) {
+			cls[i][0].fd = -1; // disable the structure
+		}
+
+	}
 
 }
 
-void unblock() { // unblocks the clients array
+void cleanList() {
 
-        semop(semid, sbuf, 1); 
-        check();
+	int i = 0;
+
+	while(i < clN) {
+
+		if (cls[i][0].fd < 0) {
+
+			glbuf.time = time(NULL);		
+
+			sprintf(glbuf.name, "SERVER");
+			sprintf(glbuf.message, "%s left.", cls[i][0].name);
+			
+			pthread_cancel(cls[i][0].thr);
+			removeClient(i);
+
+			broadcast(&glbuf, sizeof(struct buffer), NULL);
+
+		}
+
+		i++;
+
+	}
 
 }
 
-// semaphore end
 
-void * processClient(void *arg) {
 
-	#define mesize 1000 // message size
+void * processClient(void *arg) {	
 
-	struct buffer {
-
-		char name[nameLength];
-
-		time_t time;
-
-		char message[mesize];
-
-	} buf;
+	struct buffer buf;
 
 	int l; // length (of the string read)
 
@@ -125,7 +149,10 @@ void * processClient(void *arg) {
 	int cfd = (int) arg;
 
 	l = readMessage(cfd, buf.message, mesize);
-	check();
+	if (l < 0) {
+		return NULL;
+	}
+
 	if (l > nameLength) {
 		l = nameLength;
 	}
@@ -136,7 +163,7 @@ void * processClient(void *arg) {
 	block(); 
 
 	int i = 0;
-	while(heap[i].fd != 0) { // search for an empty structure in the heap
+	while(heap[i].fd >= 0) { // search for an empty structure in the heap
 		i++;
 	}
 
@@ -144,6 +171,7 @@ void * processClient(void *arg) {
 
 	client[0].fd = cfd;
 	sprintf(client[0].name, "%s", buf.message); 	
+	client[0].thr = pthread_self();
 
 	addClient(client); //add the *structure to the clients list
 
@@ -154,8 +182,10 @@ void * processClient(void *arg) {
 	sprintf(buf.name, "SERVER");
 	buf.time = time(NULL);
 	sprintf(buf.message, "Welcome, %s!", client[0].name);
-	writeMessage(client[0].fd, &buf, sizeof(struct buffer));
-	check();
+	if (writeMessage(client[0].fd, &buf, sizeof(struct buffer)) < 0) {
+		client[0].fd = -1;
+		return NULL;
+	}
 
 	printf("Client %s has been initialised.\n", client[0].name);
 
@@ -165,8 +195,14 @@ void * processClient(void *arg) {
 
 	while(1) {
 
+		pthread_testcancel(); // cancellation point
+	
 		l = readMessage(client[0].fd, buf.message, mesize);
-		check();
+		if (l < 0) {
+			client[0].fd = -1;
+			return NULL;
+		}
+
 		buf.message[l - 1] = 0;
 
 		buf.time = time(NULL);
@@ -174,23 +210,10 @@ void * processClient(void *arg) {
 		block();
 		
 		printf("Processing message from %s.\n", client[0].name);
-		
-		for(i = 0; i < clN[0]; i++) {
-			printf("%s: %d.\n", cls[i][0].name, cls[i][0].fd);
-			if (cls[i] == client) {
-				continue;
-			}
 
-//			writeMessage(cls[i][0].fd, &buf, sizeof(struct buffer) - mesize + l); check();
-int n = sizeof(struct buffer) - mesize + l;
-write(cls[i][0].fd, &n, 4); 
-check(); 
-write(cls[i][0].fd, &buf, n);
-check();
-		printf("Message sent to %s.\n", cls[i][0].name);
-
-		}
-
+		broadcast(&buf, sizeof(struct buffer) - mesize + l, client);
+		cleanList();	
+	
 		unblock();
 
 	}
@@ -198,6 +221,30 @@ check();
 	return NULL;
 
 }
+
+void * waitCommand(void *arg) {
+
+	char command[10];
+	
+	while(1) {
+
+		scanf("%s", command);
+
+		if (strcmp(command, "exit") == 0) {
+			
+			printf("Terminating.\n");
+
+			exit(0);
+
+		}
+
+	}
+
+	return NULL;
+
+}
+
+void ignore(int i) {}
 
 int main() {
 
@@ -220,47 +267,30 @@ int main() {
 
 	// a passive socket created
 
-	// 2. create a clients list
+	// 2. initialise the clients list
 
-	clN = mmap(NULL, 4 + limit * sizeof(size_t) + limit * sizeof(struct clientInfo), PROT_READ | PROT_WRITE, MAP_ANONYMOUS | MAP_SHARED, -1, 0); // clients number
-	// heap of clients information structures
-	heap = (struct clientInfo *) (clN + 4 + limit * sizeof(size_t));
-	// the unused space must be set to zero
-	memset(heap, 0, limit * sizeof(struct clientInfo));
+	for(clN = 0; clN < limit; clN++) {
+		heap[clN].fd = -1; // mark the structures as empty
+	}
 
-	cls =  (struct clientInfo **) (clN + 4); // array of *clients information
-	clN[0] = 0;
+	clN = 0; // clients number
 
-	// the clients list created
+	// the clients list initialised
 
-	// 3. create a semaphore for parallel work with the clients list
-
-	semid = semget(ftok("serv.c", 0), 1, 0666 | IPC_CREAT);
+	// 3. Prepare for multithread work
+	
+	errno = pthread_mutex_init(&mutex, NULL);
 	check();
 
-	sbuf[0].sem_num = 0;
-	sbuf[0].sem_flg = 0;
-	sbuf[0].sem_op = 1;
+	pthread_t thr;
 
-	sbuf[1] = sbuf[0];
-	sbuf[1].sem_op = -1;
-
-	// set the initial value == 1
-
-	union semun {
-
-		int val;
-		struct semid_ds *buf;
-		unsigned short  *array;
-		struct seminfo  *_buf;
-
-	} su;
-
-        su.val = 1;
-        semctl(semid, 0, SETVAL, su);
-	check(); 
+	// thread waiting for commands from terminal
+	errno = pthread_create(&thr, NULL, waitCommand, NULL);
+	check();
 	
-	// the semaphore created
+	signal(SIGPIPE, ignore); //prevent crashing when writing
+
+	// prepared for multithreading
 
 	// 4. Proceed to accept connections from clients
 
@@ -273,108 +303,11 @@ int main() {
 		cfd = accept(sfd, NULL, NULL);
 		check();
 
-		printf("New client detected.\n");
+		printf("New client detected.\n");	
 
-		/*int pid = fork();
-
-		if (pid == 0) { // the child must leave the cycle
-			break; 
-		}*/
-		
-		pthread_t thr;
-
-		pthread_create(&thr, NULL, processClient, (void *) cfd);
-
-		// the parent never leaves the cycle
-
-	}
-/*
-	#define mesize 1000 // message size
-
-	struct buffer {
-
-		char name[nameLength];
-
-		time_t time;
-
-		char message[mesize];
-
-	} buf;
-
-	int l; // length (of the string read)
-
-	// fisrt, register the client
-	// the first message is treated as the name
-
-	l = readMessage(cfd, buf.message, mesize);
-	check();
-	if (l > nameLength) {
-		l = nameLength;
-	}
-	buf.message[l - 1] = 0;
-
-	// start initialisation
-
-	block(); 
-
-	int i = 0;
-	while(heap[i].fd != 0) { // search for an empty structure in the heap
-		i++;
-	}
-
-	struct clientInfo *client = &heap[i];
-
-	client[0].fd = cfd;
-	sprintf(client[0].name, "%s", buf.message); 	
-
-	addClient(client); //add the *structure to the clients list
-
-	unblock();
-
-	// the client registered
-
-	sprintf(buf.name, "SERVER");
-	buf.time = time(NULL);
-	sprintf(buf.message, "Welcome, %s!", client[0].name);
-	writeMessage(client[0].fd, &buf, sizeof(struct buffer));
-	check();
-
-	printf("Client %s has been initialised.\n", client[0].name);
-
-	// start receiving messages
-
-	sprintf(buf.name, "%s", client[0].name);
-
-	while(1) {
-
-		l = readMessage(client[0].fd, buf.message, mesize);
+		errno = pthread_create(&thr, NULL, processClient, (void *) cfd);
 		check();
-		buf.message[l - 1] = 0;
 
-		buf.time = time(NULL);
-
-		block();
-		
-		printf("Processing message from %s.\n", client[0].name);
-		
-		for(i = 0; i < clN[0]; i++) {
-			printf("%s: %d.\n", cls[i][0].name, cls[i][0].fd);
-			if (cls[i] == client) {
-				continue;
-			}
-
-//			writeMessage(cls[i][0].fd, &buf, sizeof(struct buffer) - mesize + l); check();
-int n = sizeof(struct buffer) - mesize + l;
-write(cls[i][0].fd, &n, 4); 
-check(); 
-write(cls[i][0].fd, &buf, n);
-check();
-		printf("Message sent to %s.\n", cls[i][0].name);
-
-		}
-
-		unblock();
-
-	}*/
+	}
 
 }

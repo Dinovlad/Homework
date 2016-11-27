@@ -66,7 +66,7 @@ int writeFull(int fd, void *buf, size_t count) {
 	while(count) {
 
 		n = write(fd, buf, count);
-		
+
 		if (n < 0) {
 			return -1;
 		}
