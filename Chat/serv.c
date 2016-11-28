@@ -139,14 +139,20 @@ void cleanList() {
 
 void * processClient(void *arg) {	
 
+	int cfd = (int) arg; // client file descriptor
+
 	struct buffer buf;
 
 	int l; // length (of the string read)
 
 	// fisrt, register the client
-	// the first message is treated as the name
 
-	int cfd = (int) arg;
+	sprintf(buf.name, "SERVER");
+	sprintf(buf.message, "Please, enter your name.");
+	buf.time = time(NULL);
+	writeMessage(cfd, &buf, sizeof(struct buffer));
+
+	// the first message is treated as the name	
 
 	l = readMessage(cfd, buf.message, mesize);
 	if (l < 0) {
@@ -225,10 +231,13 @@ void * processClient(void *arg) {
 void * waitCommand(void *arg) {
 
 	char command[10];
+
+	int l;
 	
 	while(1) {
 
-		scanf("%s", command);
+		l = read(STDIN_FILENO, command, 10);
+		command[l - 1] = 0;
 
 		if (strcmp(command, "exit") == 0) {
 			

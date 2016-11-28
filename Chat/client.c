@@ -46,29 +46,30 @@ int main(int argc, char **argv) {
 	connect(sfd, (struct sockaddr *) &addr, sizeof(struct sockaddr_in));
 	check();
 
-	#define mesize 1000
-
-	char mes[mesize];
-
-	printf("Enter your name:\n");
-	scanf("%999s", mes);
-
-	writeMessage(sfd, mes, strlen(mes) + 1); // send the client's name
-	check();
+	printf("Connection established.\n");	
 
 	// start communication
+
+	#define mesize 1000
 
 	int pid = fork();
 
 	if (pid == 0) { // the child sends the messages
+
+		char mes[mesize];
+
+		int l;
+
 		while(1) {
 
-			scanf("%999s", mes);
+			l = read(STDIN_FILENO, mes, mesize);
+			mes[l - 1] = 0;
 
-			writeMessage(sfd, mes, strlen(mes) + 1);
+			writeMessage(sfd, mes, l);
 			check();
 
 		}
+
 	}
 
 	// the parent receives the messages
@@ -94,7 +95,7 @@ int main(int argc, char **argv) {
 		
 		t = localtime(&buf.time);
 
-		printf("[%d:%d:%d] %s: %s\n", t[0].tm_hour, t[0].tm_min, t[0].tm_sec, buf.name, buf.message);
+		printf("[%02d:%02d:%02d] %s: %s\n", t[0].tm_hour, t[0].tm_min, t[0].tm_sec, buf.name, buf.message);
 
 	}
 
