@@ -17,6 +17,23 @@
 #include <sys/mman.h>
 
 #define check() errCheck(__LINE__)
+#define debug() dbg(__LINE__)
+
+#define limit 50 // the maximum number of clients
+
+#define nameLength 100
+#define passLength 50
+
+// mutex
+
+#define block(mutex) pthread_mutex_lock(mutex)
+#define unblock(mutex) pthread_mutex_unlock(mutex)
+
+// mutex end
+
+#define mesize 1000 // message size
+
+#define unit 256 // the number of bytes read at once from a file
 
 void errCheck(int line) {
 	if (errno != 0) {
@@ -28,20 +45,16 @@ void errCheck(int line) {
 	}
 }
 
-#define debug() dbg(__LINE__)
-
 void dbg(int line) {
 	printf("The line %d passed.\n", line);
 }
 
-#define limit 50
-
 // active clients list
 
-#define nameLength 100
-#define passLength 50
-
 struct clientInfo { // client information
+
+	struct clientInfo *prev;
+	struct clientInfo *next;
 
 	char isActive;
 
@@ -49,28 +62,39 @@ struct clientInfo { // client information
 
 	int fd; // socket file descriptor
 
-	//char password[passLength + 1];
-
 	char name[nameLength + 1];
 
 };
 
 struct clientInfo heap[limit * sizeof(struct clientInfo)]; // heap of empty structures
-struct clientInfo *cls[limit * sizeof(struct clientInfo *)]; // clients
+struct clientInfo *cls; // clients list
 int clN; // clients number
 
-void addClient(struct clientInfo *cl) {
+void addClient(struct clientInfo *cl) {	
 
-	cls[clN] = cl;
+	cl->prev = NULL;
+	cl->next = cls;
+
+	cls = cl;
+	
+	if (cls != NULL) {
+		cls->prev = cl;
+	}
 
 	clN++;
 
 }
 
-void removeClient(int i) {
+void removeClient(struct clientInfo *cl) {
 
-	for(i = i + 1; i < clN; i++) {
-		cls[i - 1] = cls[i];
+	if (cl->prev == NULL) {
+		cls = cl->next;
+	} else {
+		cl->prev->next = cl->next;
+	}
+
+	if (cl->next != NULL) {
+		cl->next->prev = cl->prev;
 	}
 
 	clN--;
@@ -143,15 +167,6 @@ pthread_mutex_t rmutex;
 
 // clients register end
 
-// mutex
-
-#define block(mutex) pthread_mutex_lock(mutex)
-#define unblock(mutex) pthread_mutex_unlock(mutex)
-
-// mutex end
-
-#define mesize 1000 // message size
-
 struct buffer {
 
 	char name[nameLength];
@@ -164,51 +179,51 @@ struct buffer {
 
 void broadcast(void *buf, size_t count, struct clientInfo *source) {
 
-	int i;
+	struct clientInfo *current = cls;
 
-	for(i = 0; i < clN; i++) {
+	while (current != NULL) {
 
-		if ((cls[i][0].isActive == 0) || (cls[i] == source)) {
-			continue;
+		if ((current->isActive != 0) && (current != source) && (writeMessage(current->fd, buf, count) < 0)) {
+			current->isActive = 0; // disable the structure
 		}
 
-		if (writeMessage(cls[i][0].fd, buf, count) < 0) {
-			cls[i][0].isActive = 0; // disable the structure
-		}
+		current = current->next;
 
 	}
+
+}
+
+void releaseClient(struct clientInfo *cl) {
+
+	glbuf.time = time(NULL);		
+
+	sprintf(glbuf.name, "SERVER");
+	sprintf(glbuf.message, "%s left.", cl->name);
+	
+	pthread_cancel(cl->thr);
+	close(cl->fd);
+
+	removeClient(cl);
+
+	broadcast(&glbuf, sizeof(struct buffer), NULL);
 
 }
 
 void cleanList() {
 
-	int i = 0;
+	struct clientInfo *current = cls;
 
-	while(i < clN) {
+	while(current != NULL) {
 
-		if (cls[i][0].isActive == 0) {
-
-			glbuf.time = time(NULL);		
-
-			sprintf(glbuf.name, "SERVER");
-			sprintf(glbuf.message, "%s left.", cls[i][0].name);
-			
-			pthread_cancel(cls[i][0].thr);
-			close(cls[i][0].fd);
-			
-			removeClient(i);
-
-			broadcast(&glbuf, sizeof(struct buffer), NULL);
-
+		if (current->isActive == 0) {
+			releaseClient(current);
 		}
 
-		i++;
+		current = current->next;
 
 	}
 
 }
-
-
 
 void * processClient(void *arg) {	
 
@@ -351,8 +366,13 @@ void * processClient(void *arg) {
 	buf.time = time(NULL);
 	sprintf(buf.message, "Welcome, %s!", client[0].name);
 	if (writeMessage(client[0].fd, &buf, sizeof(struct buffer)) < 0) {
-		client[0].isActive = 0;
+
+		block(&lmutex);
+		releaseClient(client);
+		unblock(&lmutex);
+
 		return NULL;
+
 	}
 
 	printf("Client %s has been initialised.\n", client[0].name);
@@ -367,8 +387,13 @@ void * processClient(void *arg) {
 	
 		l = readMessage(client[0].fd, buf.message, mesize);
 		if (l < 0) {
-			client[0].isActive = 0;
+debug();
+			block(&lmutex);
+			releaseClient(client);
+			unblock(&lmutex);
+
 			return NULL;
+
 		}
 
 		buf.message[l - 1] = 0;
@@ -456,6 +481,8 @@ int main() {
 
 	clN = 0; // clients number
 
+	cls = NULL;
+
 	// the clients list initialised
 
 	// 3. Prepare for multithread work
@@ -491,9 +518,7 @@ int main() {
 	*/
 
 	int regfd = open("register", O_RDONLY | O_CREAT, S_IRWXU);
-	check();
-
-	#define unit 256
+	check();	
 
 	int l;
 
