@@ -25,8 +25,10 @@ class Matrix {
 
 		data = new int[length];
 
-		for(int i = 0; i < length; i++) {
-			data[i] = init[i];
+		if (init != NULL) {
+			for(int i = 0; i < length; i++) {
+				data[i] = init[i];
+			}
 		}
 
 	}
@@ -55,7 +57,7 @@ class Matrix {
 			exit(-1);
 		}
 
-		Matrix result(m, M.n, new int[m * M.n]);
+		Matrix result(m, M.n, NULL);
 
 		int current = 0;
 
@@ -77,9 +79,35 @@ class Matrix {
 
 	}
 
+	Matrix add(Matrix& M) {
+
+		if ((m != M.m) || (n != M.n)) {
+			exit(-1);
+		}
+
+		Matrix res(m, n, NULL);
+
+		int length = m * n;
+
+		for (int i = 0; i < length; i++) {
+			res.data[i] = data[i] + M.data[i];
+		}
+
+		return res;
+
+	}
+
 };
 
-ostream& operator <<(ostream& out, Matrix M) {
+Matrix operator * (Matrix& A, Matrix& B) {
+	return A.multiply(B);
+}
+
+Matrix operator + (Matrix& A, Matrix& B) {
+	return A.add(B);
+}
+
+ostream& operator << (ostream& out, Matrix M) {
 
 	int rows = M.getRows();
 	int cols = M.getColumns();
@@ -106,11 +134,11 @@ int main() {
 
 	Matrix A(2, 2, ar);
 
-	int arr[] = {0, 1, 0, 1, 5, 5};
+	int arr[] = {0, -1, 0, 5};
 
-	Matrix B(2, 3, arr);
+	Matrix B(2, 2, arr);
 		
-	cout << A << " * \n" << B << " = \n" << A.multiply(B);
+	cout << A << " + \n" << B << " = \n" << A + B;
 
 	return 0;
 
