@@ -2,8 +2,25 @@
 #include <stdlib.h>
 #include <vector>
 #include <stdexcept>
+#include <string>
 
 using namespace std;
+
+template <typename Key>
+class Hasher {
+public:
+	virtual int hashcode(const Key& key) = 0;
+};
+
+template <typename Key>
+class PrimitiveHasher : public Hasher<Key> {
+public:
+	
+	int hashcode(const Key& key) {
+		return (int) key;
+	}
+
+};
 
 template <typename Key, typename Value>
 class Hashtable {
@@ -18,6 +35,8 @@ private:
 
         };
 
+	Hasher<Key> *hasher;
+
         vector<KeyValue> *data;
 
         int capacity;
@@ -26,13 +45,13 @@ private:
 
 	int increment;
 
-        int hash(Key key) {
-        	return ((int) key) % capacity;
+        int hash(const Key& key) {
+        	return hasher->hashcode(key) % capacity;
         }
 
 public:
 
-        Hashtable(int capacity, int increment) {
+        Hashtable(int capacity, int increment, Hasher<Key> *_hasher) {
 
 		if (capacity <= 0) {
 			throw std::invalid_argument("Non-positive capacity.");
@@ -49,11 +68,24 @@ public:
         	data = new vector<KeyValue>[capacity];
 
         	_size = 0;
+	
+		hasher = _hasher;
 
         }
 
-        void add(Key key, Value value) {
-        	
+	Hashtable(int capacity, int increment) : 
+		Hashtable(capacity, increment, new PrimitiveHasher<Key>()) {}
+	
+	~Hashtable() {
+
+		delete[] data;
+
+		delete hasher;
+		
+	}
+
+        void put(const Key& key, const Value& value) {
+       	
 		KeyValue item;
 
 		item.key = key;
@@ -64,11 +96,11 @@ public:
 			setCapacity(capacity + increment);
 		}
 	
-		add(item);
+		put(item);
 
 	}
 
-        void add(KeyValue item) {
+        void put(const KeyValue& item) {
 
 		vector<KeyValue> &v = data[hash(item.key)];
 
@@ -92,6 +124,7 @@ public:
 
 	void setCapacity(int newCapacity) {
 
+		int oldCapacity = capacity;
 		capacity = newCapacity;
 
 		vector<KeyValue> *oldTable = data;
@@ -99,19 +132,17 @@ public:
 		
 		_size = 0;
 
-		for(int i = 0; i < capacity; i++) {
-
+		for(int i = 0; i < oldCapacity; i++) {
 			for(auto &item : oldTable[i]) {
-				add(item);
+				put(item);
 			}
-
-			delete &oldTable[i];
-
 		}
+
+		delete[] oldTable;
 
 	}
 
-        Value getValue(Key key) {
+        Value get(const Key& key) {
 
         	for (auto &item : data[hash(key)]) {
         		if (item.key == key) {
@@ -123,7 +154,7 @@ public:
 
         }
 
-        Value remove(Key key) {
+        Value remove(const Key& key) {
 
         	vector<KeyValue> &v = data[hash(key)];
 
@@ -171,28 +202,60 @@ public:
 
 };
 
+class StringHasher : public Hasher<string> {
+
+	int hashcode(const string& s) {
+		
+		int code = 0;
+
+		for (char c : s) {
+			code += c;
+		}
+
+		return code;
+
+	}
+
+};
+
 int main() {
 
 	Hashtable<int, long> ht(20, 20);
 
-	ht.add(1208, 2553243248756L);
-	ht.add(108, 8234244346758756L);
-	ht.add(34348, 7092313090156L);
-	ht.add(134348, 291087240263489756L);
-	ht.add(138, 8238947L);
-	ht.add(308, 897878758756L);
-	ht.add(898, 897878786758756L);
-	ht.add(19908, 8978786758756L);
-	ht.add(125, 89788756L);
-	ht.add(1208, 89756L);
-	ht.add(12348, 898786758756L);
-	ht.add(1, 8787868756L);
-	ht.add(228, 78786758756L);
+	ht.put(1208, 2553243248756L);
+	ht.put(108, 8234244346758756L);
+	ht.put(34348, 7092313090156L);
+	ht.put(134348, 291087240263489756L);
+	ht.put(138, 8238947L);
+	ht.put(308, 897878758756L);
+	ht.put(898, 897878786758756L);
+	ht.put(19908, 8978786758756L);
+	ht.put(125, 89788756L);
+	ht.put(1208, 89756L);
+	ht.put(12348, 898786758756L);
+	ht.put(1, 8787868756L);
+	ht.put(228, 78786758756L);
 
 	int k = 134348;
 
 	cout << "Value at key " << k << ": " << ht.remove(k) << endl;
 	cout << "Number of collisions : " << ht.collisions() << endl;	
+
+	Hashtable<string, int> accounts(2, 20, new StringHasher());
+
+	cout << "Something." << endl;
+
+	accounts.put("Dneprov", 2345032);
+	accounts.put("Silkin", 8687687);
+	accounts.put("Kozhevnikov", 98896);
+	accounts.put("Konyagin", 9999999);
+	accounts.put("Vasilyev", 12007);
+	accounts.put("Ulyanov", 98329938);
+
+	string s = "Silkin";
+
+	cout << "Account of " << s << ": " << accounts.get(s) << endl;
+	cout << "Number of collisions : " << accounts.collisions() << endl;	
 
 	return 0;
 
