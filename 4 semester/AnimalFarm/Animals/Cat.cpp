@@ -5,8 +5,6 @@
 class Cat : public Animal {
 public:	
 
-	int useless = AnimalFactory::getAnimalFactory().registerAnimal("cat", new AnimalCreator<Cat>());
-
 	Cat(string _name) : Animal(_name) {}
 
 	void voice() {
@@ -15,4 +13,4 @@ public:
 
 };
 
-
+int catInit = AnimalFactory::getAnimalFactory().registerAnimal("cat", new AnimalCreator<Cat>());

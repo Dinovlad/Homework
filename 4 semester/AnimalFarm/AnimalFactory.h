@@ -17,7 +17,6 @@ template <class Type>
 class AnimalCreator : public AbstractAnimalCreator {
 	public:
 	Animal* create(string _name) {
-	cout << "Creating..." << endl;
 		return new Type(_name);
 	}
 };
@@ -39,15 +38,12 @@ class AnimalFactory {
 	}
 
 	int registerAnimal(string id, AbstractAnimalCreator *creator) {
-		cout << creator << endl;
 		reg[id] = creator;
 		return 0;
 	}
 
 	Animal* produce(string *id, string *name) {
-	AbstractAnimalCreator *aac = reg[*id];
-	cout << "Producing from " << aac << endl;
-		return aac->create(*name);
+		return reg[*id]->create(*name);
 	}
 
 };

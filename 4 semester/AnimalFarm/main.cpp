@@ -1,8 +1,6 @@
 #include <iostream>
 #include "AnimalFactory.h"
 
-using namespace std;
-
 int main() {
 
 	vector<Animal*> animals;
@@ -11,13 +9,13 @@ int main() {
 
 	while(cin >> buf) {
 	
-		if (buf == "print") {
+		if ((buf == "print") || (buf == "pr")) {
 
 			for (auto &an : animals) {
 				an->voice();
 			}
 			
-		} else if (buf == "terminate") {
+		} else if ((buf == "terminate") || (buf == "exit")) {
 				
 			return 0;
 
